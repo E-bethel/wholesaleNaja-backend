@@ -4,7 +4,7 @@ const crypto = require("crypto");
 const User = require("../models/User");
 const Otp = require("../models/Otp");
 const { sendSmsOtp } = require("../services/termiiService");
-const { sendEmailOtp } = require("../services/mailerService");
+const { sendEmailOtp, sendWelcomeEmail } = require("../services/mailerService");
 
 const sendTokenWithCookie = (res, user) => {
   const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
@@ -103,7 +103,12 @@ exports.verifyOtp = async (req, res) => {
     // Mark as verified
     record.verified = true;
     await record.save();
-    res.status(200).json({ message: "OTP verified successfully" });
+    // Check if user already exists for this key
+    const userExists = await User.findOne({ $or: [ { email: key }, { phone: key } ] });
+    if (!userExists) {
+      return res.status(200).json({ message: "OTP verified. Please complete your profile to finish registration." });
+    }
+    return res.status(200).json({ message: "OTP verified. Your account is already active." });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error verifying OTP" });
@@ -129,6 +134,10 @@ exports.completeProfile = async (req, res) => {
     });
     // Optionally delete OTP record
     await Otp.deleteMany({ key });
+    // Send welcome email if email exists
+    if (user.email) {
+      await sendWelcomeEmail(user.email, user.fullName);
+    }
     res.status(201).json({
       message: "Profile created successfully",
       user: { id: user._id, email: user.email, phone: user.phone, role: user.role },
