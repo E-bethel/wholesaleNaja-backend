@@ -64,8 +64,14 @@ app.get('/docs', redoc({
   favicon: '/favicon.ico',
 }));
 
+
 const authRoutes = require('./src/routes/auth');
+const walletRoutes = require('./src/routes/wallet');
+const adminRoutes = require('./src/routes/admin');
+
 app.use('/api/auth', authRoutes);
+app.use('/api/wallet', walletRoutes);
+app.use('/api/admin', adminRoutes);
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);

@@ -1,0 +1,5 @@
+module.exports = {
+  DEFAULT_SIGNUP_BONUS: 50,
+  DEFAULT_NAIRA_PER_COIN: 20, // 20 NGN = 1 coin
+  DEFAULT_UNLOCK_COST: 5
+};

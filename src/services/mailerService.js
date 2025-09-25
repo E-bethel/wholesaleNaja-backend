@@ -22,7 +22,7 @@ async function sendEmailOtp(email, otp) {
         <div style="font-family: Arial, sans-serif; background: #f9f9f9; padding: 32px;">
           <div style="max-width: 480px; margin: auto; background: #fff; border-radius: 8px; box-shadow: 0 2px 8px #eee; padding: 32px;">
             <div style="text-align: center; margin-bottom: 24px;">
-              <img src="cid:logo" alt="WholeSaleNaija Logo" style="height: 60px; margin-bottom: 16px;" />
+              <img src="cid:logo" alt="WholeSaleNaija Logo" style="height: 240px; margin-bottom: 16px;" />
               <h2 style="color: #1a202c; margin: 0;">Your OTP Code</h2>
             </div>
             <p style="font-size: 16px; color: #333;">Your verification code is <strong>${otp}</strong>. It expires in 5 minutes.</p>
@@ -58,7 +58,7 @@ async function sendWelcomeEmail(email, fullName) {
         <div style="font-family: Arial, sans-serif; background: #f9f9f9; padding: 32px;">
           <div style="max-width: 480px; margin: auto; background: #fff; border-radius: 8px; box-shadow: 0 2px 8px #eee; padding: 32px;">
             <div style="text-align: center; margin-bottom: 24px;">
-              <img src="cid:logo" alt="WholeSaleNaija Logo" style="height: 60px; margin-bottom: 16px;" />
+              <img src="cid:logo" alt="WholeSaleNaija Logo" style="height: 240px; margin-bottom: 16px;" />
               <h2 style="color: #1a202c; margin: 0;">Welcome to WholeSaleNaija!</h2>
             </div>
             <p style="font-size: 16px; color: #333;">Hi <strong>${fullName}</strong>,</p>

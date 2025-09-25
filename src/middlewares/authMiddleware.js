@@ -19,4 +19,13 @@ exports.protect = async (req, res, next) => {
   } catch (err) {
     return res.status(401).json({ message: "Invalid token" });
   }
+
+};
+
+// Admin middleware for role-based access
+exports.isAdmin = (req, res, next) => {
+  if (req.user && req.user.role === 'admin') {
+    return next();
+  }
+  return res.status(403).json({ error: 'Admin access required.' });
 };

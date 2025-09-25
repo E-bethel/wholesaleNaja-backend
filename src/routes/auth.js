@@ -20,8 +20,13 @@ const { protect } = require('../middlewares/authMiddleware');
  *             properties:
  *               email:
  *                 type: string
+ *                 description: User's email address
+ *               phone:
+ *                 type: string
+ *                 description: User's phone number
  *               password:
  *                 type: string
+ *                 description: User's password
  *     responses:
  *       200:
  *         description: Login successful
@@ -57,9 +62,7 @@ router.post('/logout', logout);
  *           schema:
  *             type: object
  *             properties:
- *               email:
- *                 type: string
- *               phone:
+ *               phoneNumber:
  *                 type: string
  *     responses:
  *       200:
@@ -85,8 +88,10 @@ router.post('/send-otp', sendOtp);
  *             properties:
  *               key:
  *                 type: string
- *               otp:
+ *                 description: User's email or phone number
+ *               code:
  *                 type: string
+ *                 description: OTP received by user
  *     responses:
  *       200:
  *         description: OTP verified successfully

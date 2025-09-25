@@ -3,7 +3,7 @@ const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const User = require("../models/User");
 const Otp = require("../models/Otp");
-const { sendSmsOtp } = require("../services/termiiService");
+// Removed firebaseOtpService, using Twilio for SMS OTP
 const { sendEmailOtp, sendWelcomeEmail } = require("../services/mailerService");
 
 const sendTokenWithCookie = (res, user) => {
@@ -16,16 +16,24 @@ const sendTokenWithCookie = (res, user) => {
     sameSite: "Lax",
     maxAge: 24 * 60 * 60 * 1000,
   });
+  return token;
 };
 
 exports.login = async (req, res) => {
-  const { email, password } = req.body;
-  const user = await User.findOne({ email }).select("+password");
+  const { email, phone, password } = req.body;
+  let user;
+  if (email) {
+    user = await User.findOne({ email }).select("+password");
+  } else if (phone) {
+    user = await User.findOne({ phone }).select("+password");
+  } else {
+    return res.status(400).json({ message: "Email or phone is required" });
+  }
   if (!user || !(await user.correctPassword(password))) {
     return res.status(401).json({ message: "Invalid credentials" });
   }
-  sendTokenWithCookie(res, user);
-  res.status(200).json({ message: "Login successful" });
+  const token = sendTokenWithCookie(res, user);
+  res.status(200).json({ message: "Login successful", token });
 };
 
 exports.logout = (req, res) => {
@@ -48,67 +56,78 @@ function generateOtp() {
 // ✅ Send OTP (email or SMS)
 exports.sendOtp = async (req, res) => {
   try {
-    const { phone, email } = req.body;
-    const key = phone || email;
-    if (!key) {
-      return res.status(400).json({ message: "Phone or email required" });
+    const { email, phoneNumber } = req.body;
+    if (!email && !phoneNumber) {
+      return res.status(400).json({ message: "Provide either email or phoneNumber" });
     }
-    // Rate limit: max 3 OTPs per hour per key
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    const recentOtps = await Otp.countDocuments({ key, createdAt: { $gte: oneHourAgo } });
-    if (recentOtps >= 3) {
-      return res.status(429).json({ message: "Too many OTP requests. Try again later." });
-    }
-    // generate OTP
-    const { otp, otpHash } = generateOtp();
-    // store in MongoDB
-    await Otp.create({ key, otpHash, expires: new Date(Date.now() + 5 * 60 * 1000) });
-    // send via SMS if phone given, else email
-    let sent = false;
-    if (phone) {
-      sent = await sendSmsOtp(phone, otp);
-      if (!sent && email) {
-        sent = await sendEmailOtp(email, otp);
+    let key, sessionInfo, otp, otpHash, expires;
+    if (email) {
+      key = email;
+      // Rate limit: max 3 OTPs per hour per email
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      const recentOtps = await Otp.countDocuments({ key, createdAt: { $gte: oneHourAgo } });
+      if (recentOtps >= 3) {
+        return res.status(429).json({ message: "Too many OTP requests for this email. Try again later." });
       }
+      // Generate OTP and hash
+      const otpObj = generateOtp();
+      otp = otpObj.otp;
+      otpHash = otpObj.otpHash;
+      expires = new Date(Date.now() + 10 * 60 * 1000); // 10 min expiry
+      sessionInfo = await sendEmailOtp(email, otp); // Pass OTP to email sender
+      await Otp.create({ key, otpHash, expires, sessionInfo, createdAt: new Date() });
+      return res.status(200).json({ message: "OTP sent via email", sessionInfo });
     } else {
-      sent = await sendEmailOtp(email, otp);
+      key = phoneNumber;
+      // Rate limit: max 3 OTPs per hour per phoneNumber
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      const recentOtps = await Otp.countDocuments({ key, createdAt: { $gte: oneHourAgo } });
+      if (recentOtps >= 3) {
+        return res.status(429).json({ message: "Too many OTP requests for this phone number. Try again later." });
+      }
+      // Generate OTP and hash
+      const otpObj = generateOtp();
+      otp = otpObj.otp;
+      otpHash = otpObj.otpHash;
+      expires = new Date(Date.now() + 10 * 60 * 1000); // 10 min expiry
+      const { sendSmsOtp } = require('../services/twilioService');
+      const smsResult = await sendSmsOtp(phoneNumber, otp);
+      if (!smsResult.success) {
+        return res.status(500).json({ message: `Failed to send SMS OTP: ${smsResult.error}` });
+      }
+      sessionInfo = smsResult.sid;
+      await Otp.create({ key, otpHash, expires, sessionInfo, createdAt: new Date() });
+      return res.status(200).json({ message: "OTP sent via SMS", sessionInfo });
     }
-    if (!sent) {
-      return res.status(500).json({ message: "Failed to send OTP" });
-    }
-    return res.status(200).json({ message: "OTP sent", key });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error sending OTP" });
   }
 };
 
-// ✅ Verify OTP
+// ✅ Verify OTP using hash comparison (Twilio for SMS, mailer for email)
 exports.verifyOtp = async (req, res) => {
   try {
-    const { key, otp } = req.body;
-    // Find latest unexpired OTP for key
-    const record = await Otp.findOne({ key, expires: { $gte: new Date() }, verified: false }).sort({ createdAt: -1 });
-    if (!record) return res.status(400).json({ message: "No valid OTP found" });
-    // Check attempts
-    if (record.attempts >= 5) {
-      return res.status(429).json({ message: "Too many invalid attempts. Request a new OTP." });
+    const { key, code } = req.body;
+    if (!key) {
+      return res.status(400).json({ message: "key (email or phone) is required" });
     }
-    const otpHash = crypto.createHash("sha256").update(otp).digest("hex");
-    if (otpHash !== record.otpHash) {
-      record.attempts += 1;
-      await record.save();
-      return res.status(400).json({ message: "Invalid OTP" });
+    if (!code) {
+      return res.status(400).json({ message: "code is required" });
     }
-    // Mark as verified
-    record.verified = true;
-    await record.save();
-    // Check if user already exists for this key
-    const userExists = await User.findOne({ $or: [ { email: key }, { phone: key } ] });
-    if (!userExists) {
-      return res.status(200).json({ message: "OTP verified. Please complete your profile to finish registration." });
+    // Find latest OTP for key
+    const otpRecord = await Otp.findOne({ key }).sort({ createdAt: -1 });
+    if (!otpRecord || otpRecord.expires < new Date()) {
+      return res.status(400).json({ message: "Invalid or expired OTP" });
     }
-    return res.status(200).json({ message: "OTP verified. Your account is already active." });
+    // Hash code and compare
+    const codeHash = crypto.createHash("sha256").update(code).digest("hex");
+    if (codeHash !== otpRecord.otpHash) {
+      return res.status(400).json({ message: "Incorrect OTP" });
+    }
+    otpRecord.verified = true;
+    await otpRecord.save();
+    res.status(200).json({ message: "OTP verified successfully" });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error verifying OTP" });
@@ -118,7 +137,7 @@ exports.verifyOtp = async (req, res) => {
 // ✅ Complete profile after OTP verified
 exports.completeProfile = async (req, res) => {
   try {
-    const { key, fullName, password, role } = req.body;
+  const { key, fullName, password, role, address } = req.body;
     // Find verified OTP
     const record = await Otp.findOne({ key, verified: true }).sort({ createdAt: -1 });
     if (!record) {
@@ -131,6 +150,7 @@ exports.completeProfile = async (req, res) => {
       email: key.includes("@") ? key : undefined,
       phone: !key.includes("@") ? key : undefined,
       role,
+      address
     });
     // Optionally delete OTP record
     await Otp.deleteMany({ key });
@@ -138,9 +158,11 @@ exports.completeProfile = async (req, res) => {
     if (user.email) {
       await sendWelcomeEmail(user.email, user.fullName);
     }
+    const token = sendTokenWithCookie(res, user);
     res.status(201).json({
       message: "Profile created successfully",
       user: { id: user._id, email: user.email, phone: user.phone, role: user.role },
+      token
     });
   } catch (err) {
     console.error(err);
