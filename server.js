@@ -1,30 +1,3 @@
-// Automatically send test emails on server startup
-if (process.env.TEST_EMAIL) {
-  const { sendEmailOtp, sendWelcomeEmail } = require('./src/services/mailerService');
-  (async () => {
-    try {
-      const otpResult = await sendEmailOtp(process.env.TEST_EMAIL, '123456');
-      if (otpResult) {
-        console.log(`✅ Test OTP email sent to ${process.env.TEST_EMAIL}`);
-      } else {
-        console.error(`❌ Failed to send test OTP email to ${process.env.TEST_EMAIL}`);
-      }
-      const welcomeResult = await sendWelcomeEmail(process.env.TEST_EMAIL, process.env.TEST_NAME || 'Test User');
-      if (welcomeResult) {
-        console.log(`✅ Test welcome email sent to ${process.env.TEST_EMAIL}`);
-      } else {
-        console.error(`❌ Failed to send test welcome email to ${process.env.TEST_EMAIL}`);
-      }
-    } catch (err) {
-      console.error('❌ Error sending test emails:', err);
-    }
-  })();
-}
-// --- Test endpoints for mailerService ---
-// --- Test endpoints for mailerService ---
-const { sendEmailOtp, sendWelcomeEmail } = require('./src/services/mailerService');
-
-
 // Entry point for wholesalenaija-backend
 require('dotenv').config();
 const express = require('express');
@@ -78,33 +51,9 @@ const options = {
 };
 
 const swaggerSpec = swaggerJSDoc(options);
-// Place test endpoints after app is defined
 
-// Test: Send OTP email
-app.get('/test/send-otp', async (req, res) => {
-  const email = req.query.email || process.env.TEST_EMAIL;
-  const otp = req.query.otp || '123456';
-  if (!email) return res.status(400).json({ message: 'Missing email param' });
-  const result = await sendEmailOtp(email, otp);
-  if (result) {
-    res.json({ message: 'OTP email sent', email, otp });
-  } else {
-    res.status(500).json({ message: 'Failed to send OTP email', email });
-  }
-});
+const { sendEmailOtp, sendWelcomeEmail } = require('./src/services/mailerService');
 
-// Test: Send Welcome email
-app.get('/test/send-welcome', async (req, res) => {
-  const email = req.query.email || process.env.TEST_EMAIL;
-  const name = req.query.name || 'Test User';
-  if (!email) return res.status(400).json({ message: 'Missing email param' });
-  const result = await sendWelcomeEmail(email, name);
-  if (result) {
-    res.json({ message: 'Welcome email sent', email, name });
-  } else {
-    res.status(500).json({ message: 'Failed to send welcome email', email });
-  }
-});
 // Docs routes should be first
 app.get('/docs/swagger.json', (req, res) => {
   res.setHeader('Content-Type', 'application/json');

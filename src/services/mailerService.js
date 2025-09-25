@@ -1,12 +1,19 @@
+// Debug log to confirm env variables
+console.log('[MailerService] EMAIL_HOST:', process.env.EMAIL_HOST);
+console.log('[MailerService] EMAIL_PORT:', process.env.EMAIL_PORT);
+console.log('[MailerService] EMAIL_USER:', process.env.EMAIL_USER);
 const nodemailer = require("nodemailer");
 
 const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
+  host: "smtp.gmail.com",
   port: Number(process.env.EMAIL_PORT),
-  secure: Number(process.env.EMAIL_PORT) === 465, // true for port 465, false otherwise
+  secure: true, // Always true for port 465 (SSL)
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS
+  },
+  tls: {
+    rejectUnauthorized: false // Allow self-signed or Gmail certs
   }
 });
 
@@ -41,7 +48,11 @@ async function sendEmailOtp(email, otp) {
     console.log("Email OTP sent:", info.messageId);
     return true;
   } catch (err) {
-    console.error("Error sending email OTP:", err);
+    if (err && err.response) {
+      console.error("Error sending email OTP:", err.response);
+    } else {
+      console.error("Error sending email OTP:", err);
+    }
     return false;
   }
 }
