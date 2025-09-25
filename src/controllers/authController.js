@@ -109,28 +109,58 @@ exports.sendOtp = async (req, res) => {
 exports.verifyOtp = async (req, res) => {
   try {
     const { key, code } = req.body;
-    if (!key) {
-      return res.status(400).json({ message: "key (email or phone) is required" });
+    if (email) {
+      key = email;
+      // Rate limit: max 3 OTPs per hour per email
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      const recentOtps = await Otp.countDocuments({ key, createdAt: { $gte: oneHourAgo } });
+      if (recentOtps >= 3) {
+        return res.status(429).json({ message: "Too many OTP requests for this email. Try again later." });
+      }
+      // Generate OTP and hash
+      const otpObj = generateOtp();
+      otp = otpObj.otp;
+      otpHash = otpObj.otpHash;
+      expires = new Date(Date.now() + 10 * 60 * 1000); // 10 min expiry
+      sessionInfo = null; // No messageId returned, set to null
+      await Otp.create({ key, otpHash, expires, sessionInfo, createdAt: new Date() });
+      // Send email in background
+      setImmediate(() => {
+        sendEmailOtp(email, otp).then(emailSent => {
+          if (!emailSent) {
+            console.error(`Failed to send OTP email to ${email}`);
+          }
+        }).catch(err => {
+          console.error(`Error sending OTP email to ${email}:`, err);
+        });
+      });
+      return res.status(200).json({ message: "OTP is being sent via email" });
+    } else {
+      key = phoneNumber;
+      // Rate limit: max 3 OTPs per hour per phoneNumber
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      const recentOtps = await Otp.countDocuments({ key, createdAt: { $gte: oneHourAgo } });
+      if (recentOtps >= 3) {
+        return res.status(429).json({ message: "Too many OTP requests for this phone number. Try again later." });
+      }
+      // Generate OTP and hash
+      const otpObj = generateOtp();
+      otp = otpObj.otp;
+      otpHash = otpObj.otpHash;
+      expires = new Date(Date.now() + 10 * 60 * 1000); // 10 min expiry
+      const { sendSmsOtp } = require('../services/twilioService');
+      const smsResult = await sendSmsOtp(phoneNumber, otp);
+      if (!smsResult.success) {
+        return res.status(500).json({ message: `Failed to send SMS OTP: ${smsResult.error}` });
+      }
+      sessionInfo = smsResult.sid;
+      await Otp.create({ key, otpHash, expires, sessionInfo, createdAt: new Date() });
+      return res.status(200).json({ message: "OTP sent via SMS", sessionInfo });
     }
-    if (!code) {
-      return res.status(400).json({ message: "code is required" });
-    }
-    // Find latest OTP for key
-    const otpRecord = await Otp.findOne({ key }).sort({ createdAt: -1 });
-    if (!otpRecord || otpRecord.expires < new Date()) {
-      return res.status(400).json({ message: "Invalid or expired OTP" });
-    }
-    // Hash code and compare
-    const codeHash = crypto.createHash("sha256").update(code).digest("hex");
-    if (codeHash !== otpRecord.otpHash) {
-      return res.status(400).json({ message: "Incorrect OTP" });
-    }
-    otpRecord.verified = true;
-    await otpRecord.save();
-    res.status(200).json({ message: "OTP verified successfully" });
-  } catch (err) {
+  }
+  catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Error verifying OTP" });
+    res.status(500).json({ message: "Error sending OTP" });
   }
 };
 
